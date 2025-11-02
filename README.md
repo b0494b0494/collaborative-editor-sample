@@ -42,10 +42,12 @@ npm run dev
 
 ## Features
 
-- ? Real-time collaborative editing
+- ? Real-time collaborative editing with Notion-like rich text
 - ?? Automatic saving (SQLite)
 - ? Redis caching for performance
 - ?? Multiple document management
+- ?? Rich text formatting (headings, lists, bold, italic, code)
+- ?? Collaborative cursors (see other users typing)
 - ?? Docker support
 
 ## License

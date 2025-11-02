@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState, useMemo } from 'react';
 import { useEditor, EditorContent } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import Placeholder from '@tiptap/extension-placeholder';
@@ -61,31 +61,35 @@ function Editor({ docId }) {
     };
   }, [docId]);
 
-  // Build extensions array conditionally
-  const extensions = [
-    StarterKit.configure({
-      history: false, // Yjs handles history
-    }),
-    Placeholder.configure({
-      placeholder: 'Start typing... Use / for commands',
-    }),
-    Collaboration.configure({
-      document: ydocRef.current || new Y.Doc(),
-    }),
-  ];
+  // Build extensions array conditionally with useMemo
+  const extensions = useMemo(() => {
+    const baseExtensions = [
+      StarterKit.configure({
+        history: false, // Yjs handles history
+      }),
+      Placeholder.configure({
+        placeholder: 'Start typing... Use / for commands',
+      }),
+      Collaboration.configure({
+        document: ydocRef.current || new Y.Doc(),
+      }),
+    ];
 
-  // Only add CollaborationCursor when provider and awareness are ready
-  if (isReady && providerRef.current && providerRef.current.awareness) {
-    extensions.push(
-      CollaborationCursor.configure({
-        provider: providerRef.current,
-        user: {
-          name: `User ${Math.random().toString(36).substr(2, 9)}`,
-          color: `#${Math.floor(Math.random() * 16777215).toString(16)}`,
-        },
-      })
-    );
-  }
+    // Only add CollaborationCursor when provider and awareness are ready
+    if (isReady && providerRef.current && providerRef.current.awareness) {
+      baseExtensions.push(
+        CollaborationCursor.configure({
+          provider: providerRef.current,
+          user: {
+            name: `User ${Math.random().toString(36).substr(2, 9)}`,
+            color: `#${Math.floor(Math.random() * 16777215).toString(16)}`,
+          },
+        })
+      );
+    }
+
+    return baseExtensions;
+  }, [isReady, docId]);
 
   const editor = useEditor({
     extensions,
@@ -95,7 +99,7 @@ function Editor({ docId }) {
       },
     },
     editable: isReady && ydocRef.current && providerRef.current,
-  }, [isReady, docId]);
+  }, [isReady, docId, extensions]);
 
   return (
     <div className="editor-container">
