@@ -1,4 +1,18 @@
 services:
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6380:6379"
+    volumes:
+      - redis-data:/data
+    command: redis-server --appendonly yes
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
   server:
     build:
       context: ./server
@@ -11,6 +25,11 @@ services:
     environment:
       - NODE_ENV=development
       - DB_DIR=/app/data
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+    depends_on:
+      redis:
+        condition: service_healthy
     restart: unless-stopped
 
   client:
@@ -32,3 +51,4 @@ services:
 
 volumes:
   server-data:
+  redis-data:

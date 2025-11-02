@@ -2,6 +2,7 @@ import express from 'express';
 import { WebSocketServer } from 'ws';
 import * as Y from 'yjs';
 import Database from 'better-sqlite3';
+import Redis from 'ioredis';
 import * as encoding from 'lib0/encoding';
 import * as decoding from 'lib0/decoding';
 import * as syncProtocol from 'y-protocols/sync';
@@ -20,6 +21,28 @@ const WS_PORT = 1234;
 // CORS configuration
 app.use(cors());
 app.use(express.json());
+
+// Initialize Redis client
+const redisHost = process.env.REDIS_HOST || 'localhost';
+const redisPort = parseInt(process.env.REDIS_PORT || '6379');
+const redis = new Redis({
+  host: redisHost,
+  port: redisPort,
+  retryStrategy: (times) => {
+    const delay = Math.min(times * 50, 2000);
+    console.log(`Redis connection retry, attempt ${times}, delay ${delay}ms`);
+    return delay;
+  },
+  maxRetriesPerRequest: 3,
+});
+
+redis.on('connect', () => {
+  console.log('Connected to Redis');
+});
+
+redis.on('error', (err) => {
+  console.error('Redis connection error:', err);
+});
 
 // Initialize SQLite database
 const dbDir = process.env.DB_DIR || __dirname;
@@ -41,6 +64,45 @@ db.exec(`
 const docs = new Map();
 const awareness = new Map();
 
+// Redis cache keys
+const CACHE_KEY_DOCUMENTS_LIST = 'documents:list';
+const CACHE_KEY_DOCUMENT = (docId) => `document:${docId}`;
+const CACHE_KEY_DOCUMENT_META = (docId) => `document:meta:${docId}`;
+const CACHE_TTL = 300; // 5 minutes
+
+// Helper function to invalidate document cache
+async function invalidateDocumentCache(docId) {
+  try {
+    await redis.del(CACHE_KEY_DOCUMENTS_LIST);
+    await redis.del(CACHE_KEY_DOCUMENT_META(docId));
+  } catch (err) {
+    console.error('Error invalidating cache:', err);
+  }
+}
+
+// Helper function to get document metadata
+async function getDocumentMetadata(docId) {
+  try {
+    const cached = await redis.get(CACHE_KEY_DOCUMENT_META(docId));
+    if (cached) {
+      return JSON.parse(cached);
+    }
+    
+    const stmt = db.prepare('SELECT id, title, created_at, updated_at FROM documents WHERE id = ?');
+    const row = stmt.get(docId);
+    
+    if (row) {
+      await redis.setex(CACHE_KEY_DOCUMENT_META(docId), CACHE_TTL, JSON.stringify(row));
+      return row;
+    }
+    return null;
+  } catch (err) {
+    console.error('Error getting document metadata:', err);
+    const stmt = db.prepare('SELECT id, title, created_at, updated_at FROM documents WHERE id = ?');
+    return stmt.get(docId);
+  }
+}
+
 function getDocument(docId) {
   if (!docs.has(docId)) {
     const doc = new Y.Doc();
@@ -59,12 +121,26 @@ function getDocument(docId) {
       // Create new document
       db.prepare('INSERT OR IGNORE INTO documents (id, title) VALUES (?, ?)')
         .run(docId, `Document ${docId}`);
+      invalidateDocumentCache(docId);
     }
     
-    // Watch for changes and save to database
-    doc.on('update', (update) => {
+    // Watch for changes and save to database and cache
+    doc.on('update', async (update) => {
       db.prepare('UPDATE documents SET content = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?')
         .run(Buffer.from(update), docId);
+      
+      // Invalidate cache when document is updated
+      await invalidateDocumentCache(docId);
+      
+      // Publish update event to Redis pub/sub for real-time notifications
+      try {
+        await redis.publish('document:updates', JSON.stringify({
+          docId,
+          timestamp: Date.now(),
+        }));
+      } catch (err) {
+        console.error('Error publishing update:', err);
+      }
     });
     
     docs.set(docId, doc);
@@ -73,30 +149,75 @@ function getDocument(docId) {
   return docs.get(docId);
 }
 
-// REST API - List documents
-app.get('/api/documents', (req, res) => {
-  const stmt = db.prepare('SELECT id, title, created_at, updated_at FROM documents ORDER BY updated_at DESC');
-  const documents = stmt.all();
-  res.json(documents);
+// REST API - List documents (with Redis caching)
+app.get('/api/documents', async (req, res) => {
+  try {
+    // Try to get from cache first
+    const cached = await redis.get(CACHE_KEY_DOCUMENTS_LIST);
+    if (cached) {
+      return res.json(JSON.parse(cached));
+    }
+    
+    // If not in cache, get from database
+    const stmt = db.prepare('SELECT id, title, created_at, updated_at FROM documents ORDER BY updated_at DESC');
+    const documents = stmt.all();
+    
+    // Cache the result
+    await redis.setex(CACHE_KEY_DOCUMENTS_LIST, CACHE_TTL, JSON.stringify(documents));
+    
+    res.json(documents);
+  } catch (err) {
+    console.error('Error fetching documents:', err);
+    // Fallback to database if Redis fails
+    const stmt = db.prepare('SELECT id, title, created_at, updated_at FROM documents ORDER BY updated_at DESC');
+    const documents = stmt.all();
+    res.json(documents);
+  }
+});
+
+// REST API - Get document metadata
+app.get('/api/documents/:id', async (req, res) => {
+  const { id } = req.params;
+  const metadata = await getDocumentMetadata(id);
+  
+  if (metadata) {
+    res.json(metadata);
+  } else {
+    res.status(404).json({ error: 'Document not found' });
+  }
 });
 
 // REST API - Create document
-app.post('/api/documents', (req, res) => {
+app.post('/api/documents', async (req, res) => {
   const { id, title } = req.body;
   const docId = id || `doc-${Date.now()}`;
   
   db.prepare('INSERT INTO documents (id, title) VALUES (?, ?)')
     .run(docId, title || `New Document`);
   
-  res.json({ id: docId, title: title || `New Document` });
+  // Invalidate cache
+  await invalidateDocumentCache(docId);
+  
+  const newDoc = {
+    id: docId,
+    title: title || `New Document`,
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+  };
+  
+  res.json(newDoc);
 });
 
 // REST API - Delete document
-app.delete('/api/documents/:id', (req, res) => {
+app.delete('/api/documents/:id', async (req, res) => {
   const { id } = req.params;
   db.prepare('DELETE FROM documents WHERE id = ?').run(id);
   docs.delete(id);
   awareness.delete(id);
+  
+  // Invalidate cache
+  await invalidateDocumentCache(id);
+  
   res.json({ success: true });
 });
 
@@ -133,15 +254,7 @@ wss.on('connection', (ws, req) => {
     }
   };
   
-  // Broadcast awareness updates
-  const broadcastAwareness = (awarenessUpdate, origin) => {
-    if (origin !== ws) {
-      const encoder = encoding.createEncoder();
-      encoding.writeVarUint(encoder, 1); // awareness message type
-      awarenessProtocol.encodeAwarenessUpdate(encoder, awarenessUpdate);
-      ws.send(Buffer.from(encoding.toUint8Array(encoder)));
-    }
-  };
+  // Remove unused broadcastAwareness function - handled in message handler
   
   // Handle document updates
   doc.on('update', (update, origin) => {
@@ -165,16 +278,11 @@ wss.on('connection', (ws, req) => {
           synced = true;
         }
       } else if (messageType === 1) {
-        // Awareness message
-        const awarenessUpdate = awarenessProtocol.decodeAwarenessUpdate(decoder, docAwareness);
-        // Broadcast to other clients
-        const encoder = encoding.createEncoder();
-        encoding.writeVarUint(encoder, 1);
-        awarenessProtocol.encodeAwarenessUpdate(encoder, awarenessUpdate);
-        // Broadcast to all other clients
+        // Awareness message - forward to other clients
         wss.clients.forEach((client) => {
           if (client !== ws && client.readyState === 1) {
-            client.send(Buffer.from(encoding.toUint8Array(encoder)));
+            // Forward the original message
+            client.send(message);
           }
         });
       }
@@ -191,4 +299,39 @@ wss.on('connection', (ws, req) => {
   console.log(`Client connected to document: ${docId}`);
 });
 
+// Subscribe to document updates via Redis pub/sub for cross-instance notifications
+const subscriber = new Redis({
+  host: redisHost,
+  port: redisPort,
+});
+
+subscriber.subscribe('document:updates', (err) => {
+  if (err) {
+    console.error('Error subscribing to Redis channel:', err);
+  } else {
+    console.log('Subscribed to Redis document:updates channel');
+  }
+});
+
+subscriber.on('message', (channel, message) => {
+  if (channel === 'document:updates') {
+    try {
+      const update = JSON.parse(message);
+      // Log document updates for monitoring
+      console.log(`Document updated via Redis: ${update.docId} at ${new Date(update.timestamp).toISOString()}`);
+    } catch (err) {
+      console.error('Error processing Redis message:', err);
+    }
+  }
+});
+
 console.log(`WebSocket server running on ws://0.0.0.0:${WS_PORT}`);
+
+// Graceful shutdown
+process.on('SIGTERM', async () => {
+  console.log('SIGTERM received, shutting down gracefully');
+  await redis.quit();
+  await subscriber.quit();
+  db.close();
+  process.exit(0);
+});

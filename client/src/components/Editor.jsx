@@ -1,18 +1,21 @@
 import React, { useEffect, useRef, useState } from 'react';
+import { useEditor, EditorContent } from '@tiptap/react';
+import StarterKit from '@tiptap/starter-kit';
+import Placeholder from '@tiptap/extension-placeholder';
+import Collaboration from '@tiptap/extension-collaboration';
+import CollaborationCursor from '@tiptap/extension-collaboration-cursor';
 import * as Y from 'yjs';
 import { WebsocketProvider } from 'y-websocket';
 import './Editor.css';
 
 function Editor({ docId }) {
-  const textareaRef = useRef(null);
   const [connectionStatus, setConnectionStatus] = useState('connecting');
   const ydocRef = useRef(null);
   const providerRef = useRef(null);
-  const ytextRef = useRef(null);
-  const isLocalUpdateRef = useRef(false);
+  const [isReady, setIsReady] = useState(false);
 
   useEffect(() => {
-    if (!textareaRef.current) return;
+    if (!docId) return;
 
     // Create Yjs document
     const ydoc = new Y.Doc();
@@ -29,94 +32,62 @@ function Editor({ docId }) {
     providerRef.current = provider;
 
     // Monitor connection status
-    provider.on('status', (event) => {
+    const handleStatus = (event) => {
       setConnectionStatus(event.status);
-    });
+      if (event.status === 'connected') {
+        setIsReady(true);
+      }
+    };
 
-    // Create Yjs text type
-    const ytext = ydoc.getText('content');
-    ytextRef.current = ytext;
+    provider.on('status', handleStatus);
 
-    // Set initial text
-    const initialText = ytext.toString();
-    if (textareaRef.current) {
-      textareaRef.current.value = initialText;
+    // Set ready if already connected
+    if (provider.shouldConnect) {
+      setIsReady(true);
+      setConnectionStatus('connected');
     }
 
-    // Reflect changes from Yjs to textarea
-    const updateHandler = () => {
-      if (textareaRef.current && !isLocalUpdateRef.current) {
-        const text = ytext.toString();
-        const cursorPos = textareaRef.current.selectionStart;
-        textareaRef.current.value = text;
-        // Restore cursor position if possible
-        const newPos = Math.min(cursorPos, text.length);
-        textareaRef.current.setSelectionRange(newPos, newPos);
-      }
-    };
-
-    ytext.observe(updateHandler);
-
-    // Reflect changes from textarea to Yjs
-    const handleInput = (e) => {
-      const newValue = e.target.value;
-      const currentValue = ytext.toString();
-      
-      if (newValue !== currentValue) {
-        isLocalUpdateRef.current = true;
-        
-        // Simple diff calculation
-        const cursorPos = e.target.selectionStart;
-        let start = 0;
-        
-        // Skip common prefix
-        while (start < currentValue.length && 
-               start < newValue.length && 
-               currentValue[start] === newValue[start]) {
-          start++;
-        }
-        
-        // Skip common suffix
-        let end1 = currentValue.length;
-        let end2 = newValue.length;
-        while (end1 > start && end2 > start && 
-               currentValue[end1 - 1] === newValue[end2 - 1]) {
-          end1--;
-          end2--;
-        }
-        
-        // Apply delete and insert
-        if (end1 > start) {
-          ytext.delete(start, end1 - start);
-        }
-        if (end2 > start) {
-          const insertText = newValue.substring(start, end2);
-          ytext.insert(start, insertText);
-        }
-        
-        // Restore cursor position
-        setTimeout(() => {
-          if (textareaRef.current) {
-            const newPos = Math.min(cursorPos, newValue.length);
-            textareaRef.current.setSelectionRange(newPos, newPos);
-          }
-          isLocalUpdateRef.current = false;
-        }, 0);
-      }
-    };
-
-    const textarea = textareaRef.current;
-    textarea.addEventListener('input', handleInput);
-
     return () => {
-      ytext.unobserve(updateHandler);
-      if (textarea) {
-        textarea.removeEventListener('input', handleInput);
-      }
+      provider.off('status', handleStatus);
       provider.destroy();
       ydoc.destroy();
     };
   }, [docId]);
+
+  const editor = useEditor({
+    extensions: [
+      StarterKit.configure({
+        history: false, // Yjs handles history
+      }),
+      Placeholder.configure({
+        placeholder: 'Start typing... Use / for commands',
+      }),
+      Collaboration.configure({
+        document: ydocRef.current || new Y.Doc(),
+      }),
+      CollaborationCursor.configure({
+        provider: providerRef.current,
+        user: {
+          name: `User ${Math.random().toString(36).substr(2, 9)}`,
+          color: `#${Math.floor(Math.random() * 16777215).toString(16)}`,
+        },
+      }),
+    ],
+    editorProps: {
+      attributes: {
+        class: 'tiptap-editor',
+      },
+    },
+    editable: isReady && ydocRef.current && providerRef.current,
+  }, [isReady, docId]);
+
+  // Update editor when ydoc/provider become ready
+  useEffect(() => {
+    if (!editor || !isReady || !ydocRef.current || !providerRef.current) return;
+
+    // Force editor update to use correct ydoc and provider
+    editor.setEditable(true);
+  }, [editor, isReady]);
 
   return (
     <div className="editor-container">
@@ -129,11 +100,14 @@ function Editor({ docId }) {
         </div>
       </div>
       <div className="editor-wrapper">
-        <textarea
-          ref={textareaRef}
-          className="editor-content"
-          placeholder="Type your text here. Open multiple browser tabs to see real-time collaboration."
-        />
+        <div className="editor-content">
+          {editor && <EditorContent editor={editor} />}
+          {!isReady && (
+            <div style={{ padding: '40px', textAlign: 'center', color: '#666' }}>
+              Connecting to server...
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );

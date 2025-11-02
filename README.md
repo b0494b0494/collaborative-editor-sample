@@ -4,7 +4,7 @@ Real-time collaborative document editor with Redis caching.
 
 ## Tech Stack
 
-- **Frontend**: React + Vite + Yjs
+- **Frontend**: React + Vite + Tiptap (Notion-like rich text editor)
 - **Backend**: Node.js + Express
 - **Database**: SQLite (persistent storage)
 - **Cache**: Redis (in-memory, real-time data)
