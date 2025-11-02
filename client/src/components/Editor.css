@@ -1,0 +1,70 @@
+.editor-container {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.editor-header {
+  padding: 15px 30px;
+  border-bottom: 1px solid #e0e0e0;
+  background-color: #fafafa;
+}
+
+.doc-info {
+  display: flex;
+  align-items: center;
+  gap: 15px;
+}
+
+.doc-info h2 {
+  font-size: 18px;
+  font-weight: 500;
+  color: #2c3e50;
+}
+
+.status {
+  font-size: 12px;
+  padding: 4px 8px;
+  border-radius: 4px;
+  background-color: #ecf0f1;
+}
+
+.status.connected {
+  background-color: #d4edda;
+  color: #155724;
+}
+
+.status.connecting {
+  background-color: #fff3cd;
+  color: #856404;
+}
+
+.editor-wrapper {
+  flex: 1;
+  overflow-y: auto;
+  padding: 30px;
+}
+
+.editor-content {
+  width: 100%;
+  max-width: 900px;
+  margin: 0 auto;
+  min-height: calc(100vh - 100px);
+  background-color: white;
+  padding: 40px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  border: none;
+  outline: none;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
+    sans-serif;
+  font-size: 16px;
+  line-height: 1.6;
+  resize: none;
+  color: #333;
+}
+
+.editor-content::placeholder {
+  color: #999;
+  font-style: italic;
+}

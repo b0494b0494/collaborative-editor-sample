@@ -1,0 +1,19 @@
+{
+  "name": "collaborative-editor-server",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "node --watch index.js",
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "ws": "^8.14.2",
+    "yjs": "^13.6.8",
+    "y-protocols": "^1.0.6",
+    "lib0": "^0.2.88",
+    "better-sqlite3": "^9.2.2",
+    "uuid": "^9.0.1",
+    "cors": "^2.8.5"
+  }
+}

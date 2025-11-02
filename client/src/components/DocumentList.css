@@ -1,0 +1,59 @@
+.document-list {
+  flex: 1;
+  overflow-y: auto;
+}
+
+.document-item {
+  padding: 15px 20px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  cursor: pointer;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  transition: background-color 0.2s;
+}
+
+.document-item:hover {
+  background-color: rgba(255, 255, 255, 0.05);
+}
+
+.document-item.active {
+  background-color: rgba(52, 152, 219, 0.2);
+}
+
+.document-info {
+  flex: 1;
+}
+
+.document-title {
+  font-size: 14px;
+  font-weight: 500;
+  margin-bottom: 5px;
+}
+
+.document-meta {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.6);
+}
+
+.delete-btn {
+  background: none;
+  border: none;
+  color: rgba(255, 255, 255, 0.6);
+  font-size: 20px;
+  cursor: pointer;
+  padding: 5px 10px;
+  border-radius: 4px;
+  transition: all 0.2s;
+}
+
+.delete-btn:hover {
+  color: #e74c3c;
+  background-color: rgba(231, 76, 60, 0.1);
+}
+
+.empty-list {
+  padding: 20px;
+  text-align: center;
+  color: rgba(255, 255, 255, 0.6);
+}
