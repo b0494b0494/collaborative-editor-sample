@@ -34,18 +34,25 @@ function Editor({ docId }) {
     // Monitor connection status
     const handleStatus = (event) => {
       setConnectionStatus(event.status);
-      if (event.status === 'connected') {
+      if (event.status === 'connected' && provider.awareness) {
         setIsReady(true);
       }
     };
 
     provider.on('status', handleStatus);
 
-    // Set ready if already connected
-    if (provider.shouldConnect) {
-      setIsReady(true);
-      setConnectionStatus('connected');
-    }
+    // Check if provider is already ready
+    const checkReady = () => {
+      if (provider && provider.awareness) {
+        setIsReady(true);
+        setConnectionStatus('connected');
+      } else {
+        // Wait a bit and check again
+        setTimeout(checkReady, 50);
+      }
+    };
+    
+    checkReady();
 
     return () => {
       provider.off('status', handleStatus);
@@ -54,25 +61,34 @@ function Editor({ docId }) {
     };
   }, [docId]);
 
-  const editor = useEditor({
-    extensions: [
-      StarterKit.configure({
-        history: false, // Yjs handles history
-      }),
-      Placeholder.configure({
-        placeholder: 'Start typing... Use / for commands',
-      }),
-      Collaboration.configure({
-        document: ydocRef.current || new Y.Doc(),
-      }),
+  // Build extensions array conditionally
+  const extensions = [
+    StarterKit.configure({
+      history: false, // Yjs handles history
+    }),
+    Placeholder.configure({
+      placeholder: 'Start typing... Use / for commands',
+    }),
+    Collaboration.configure({
+      document: ydocRef.current || new Y.Doc(),
+    }),
+  ];
+
+  // Only add CollaborationCursor when provider and awareness are ready
+  if (isReady && providerRef.current && providerRef.current.awareness) {
+    extensions.push(
       CollaborationCursor.configure({
         provider: providerRef.current,
         user: {
           name: `User ${Math.random().toString(36).substr(2, 9)}`,
           color: `#${Math.floor(Math.random() * 16777215).toString(16)}`,
         },
-      }),
-    ],
+      })
+    );
+  }
+
+  const editor = useEditor({
+    extensions,
     editorProps: {
       attributes: {
         class: 'tiptap-editor',
@@ -80,14 +96,6 @@ function Editor({ docId }) {
     },
     editable: isReady && ydocRef.current && providerRef.current,
   }, [isReady, docId]);
-
-  // Update editor when ydoc/provider become ready
-  useEffect(() => {
-    if (!editor || !isReady || !ydocRef.current || !providerRef.current) return;
-
-    // Force editor update to use correct ydoc and provider
-    editor.setEditable(true);
-  }, [editor, isReady]);
 
   return (
     <div className="editor-container">
