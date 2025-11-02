@@ -4,6 +4,22 @@
 
 This is a real-time collaborative document editor built with modern web technologies. Multiple users can edit documents simultaneously with Notion-like rich text editing capabilities.
 
+## System Architecture
+
+```mermaid
+graph TB
+    Client1[Client 1<br/>React + Tiptap]
+    Client2[Client 2<br/>React + Tiptap]
+    Client3[Client 3<br/>React + Tiptap]
+    
+    Client1 -->|WebSocket| Server[Node.js Server<br/>Express + Yjs]
+    Client2 -->|WebSocket| Server
+    Client3 -->|WebSocket| Server
+    
+    Server -->|Persist| SQLite[(SQLite<br/>Documents)]
+    Server -->|Cache| Redis[(Redis<br/>Cache)]
+```
+
 ## Architecture
 
 ### Frontend
@@ -20,16 +36,27 @@ This is a real-time collaborative document editor built with modern web technolo
 
 ### Data Flow
 
-```
-Client (Tiptap) 
-  ?
-Yjs Document (CRDT)
-  ?
-WebSocket
-  ?
-Server (Yjs sync)
-  ?
-SQLite (persistent) + Redis (cache)
+```mermaid
+sequenceDiagram
+    participant User as User Types
+    participant Tiptap as Tiptap Editor
+    participant Yjs as Yjs Document
+    participant WS as WebSocket
+    participant Server as Server
+    participant SQLite as SQLite DB
+    participant Redis as Redis Cache
+    participant Others as Other Clients
+    
+    User->>Tiptap: Input text
+    Tiptap->>Yjs: Update CRDT
+    Yjs->>WS: Send update
+    WS->>Server: Sync message
+    Server->>SQLite: Save update
+    Server->>Redis: Update cache
+    Server->>Others: Broadcast update
+    Others->>Yjs: Receive update
+    Yjs->>Tiptap: Apply changes
+    Tiptap->>User: Show changes
 ```
 
 ## Features
