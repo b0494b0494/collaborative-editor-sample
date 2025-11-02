@@ -1,0 +1,37 @@
+# Project Rules for Collaborative Editor Sample
+
+## Code Standards
+- All code comments must be in English
+- All documentation must be in English
+- Use clear, descriptive variable and function names
+- Follow JavaScript/React best practices
+
+## Commit Guidelines
+- **DO NOT commit** any files containing:
+  - License violations or proprietary code
+  - Sensitive security information (API keys, passwords, tokens, secrets)
+  - Personal credentials or authentication data
+  - Private keys or certificates
+  - Environment files with actual secrets (.env files with real values)
+  
+- **DO commit**:
+  - Source code with MIT or open-source licensed dependencies only
+  - Documentation files
+  - Configuration files (without sensitive data)
+  - Example .env files with placeholder values only
+
+## Security Best Practices
+- Never hardcode secrets in source code
+- Use environment variables for configuration
+- Keep dependencies updated and audit regularly
+- Review third-party packages for security vulnerabilities
+
+## Dependencies
+- Only use MIT licensed or compatible open-source packages
+- Ensure all dependencies are free to use commercially
+- Document any special license requirements
+
+## Docker
+- Docker configurations should be included in repository
+- Use Docker secrets or environment variables for sensitive data
+- Never commit Docker images or large binary files
